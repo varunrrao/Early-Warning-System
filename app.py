@@ -149,7 +149,7 @@ def process_valve_data(df: pd.DataFrame):
         result_rows.append(
             {
                 "Valve Tag": tag,
-                "95th% Error Threshold": round(threshold_95, 3),
+                "95th '%' Error Threshold": round(threshold_95, 3),
                 "Failure Prediction Score (%)": score,
             }
         )
@@ -202,25 +202,40 @@ def plot_trend(df_tag, tag):
     )
 
     st.plotly_chart(fig, use_container_width=True)
-def plot_gauge(score, threshold, tag):
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number+delta",
-        value=score,
-        domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': f"Failure Prediction - {tag}<br>95th Percentile: {threshold:.2f}"},
-        gauge={
-            'axis': {'range': [0, 100]},
-            'bar': {'color': "darkred"},
-            'steps': [
-                {'range': [0, 50], 'color': "#098a20"},
-                {'range': [50, 75], 'color': "#ffc966"},
-                {'range': [75, 100], 'color': '#990000'}
-            ],
-            'threshold': {'line': {'color': "black", 'width': 4}, 'thickness': 0.75, 'value': score}
-        }
-    ))
-    st.plotly_chart(fig, use_container_width=True)
 
+def plot_value_trend(df_tag, tag):
+    """Plots FINAL_VALUE and FINAL_POSITION_VALUE trends against Date."""
+
+    fig = go.Figure()
+
+    # FINAL_VALUE trend line
+    fig.add_trace(go.Scatter(
+        x=df_tag[DATE_COL],
+        y=df_tag[COL_FINAL],
+        mode="lines",
+        name="FINAL_VALUE",
+        line=dict(color="green", width=2)
+    ))
+
+    # FINAL_POSITION_VALUE trend line
+    fig.add_trace(go.Scatter(
+        x=df_tag[DATE_COL],
+        y=df_tag[COL_POSITION],
+        mode="lines",
+        name="FINAL_POSITION_VALUE",
+        line=dict(color="orange", width=2)
+    ))
+
+    fig.update_layout(
+        title=f"FINAL_VALUE vs FINAL_POSITION_VALUE Trend - {tag}",
+        xaxis_title="Date",
+        yaxis_title="Value",
+        template="plotly_white"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+def plot_gauge(score, threshold, tag): 
+    fig = go.Figure(go.Indicator( mode="gauge+number+delta", value=score, domain={'x': [0, 1], 'y': [0, 1]}, title={'text': f"Failure Prediction - {tag}<br>95th Percentile: {threshold:.2f}"}, gauge={ 'axis': {'range': [0, 100]}, 'bar': {'color': "darkred"}, 'steps': [ {'range': [0, 50], 'color': "#098a20"}, {'range': [50, 75], 'color': "#ffc966"}, {'range': [75, 100], 'color': '#990000'} ], 'threshold': {'line': {'color': "black", 'width': 4}, 'thickness': 0.75, 'value': score} } )) 
+    st.plotly_chart(fig, use_container_width=True)
 def plot_heatmap(df_tag, tag):
     df_tag["DateOnly"] = df_tag[DATE_COL].dt.date
     df_tag["Hour"] = df_tag[DATE_COL].dt.hour
@@ -274,7 +289,7 @@ def show_valve_table(df_tag, tag):
     display_df["Anomaly Type"] = anomaly_types
 
     # === Streamlit Section Header ===
-    st.subheader(f"📋 Raw ISAE Control Valve Data with ARIMA Trend and K-Means + Isolation Forest Anomaly Detection — {tag}")
+    st.subheader(f"📋 Raw ISAE Control Valve Data with  Anomaly Detection — {tag}")
 
     # === Define row highlighting logic ===
     def highlight_anomalies(row):
@@ -300,16 +315,14 @@ def show_valve_table(df_tag, tag):
         }),
         use_container_width=True,
     )
-
-
     display_df["Anomaly Type"] = anomaly_types
+
 def export_results(all_data):
     with pd.ExcelWriter(EXPORT_PATH, engine="openpyxl") as writer:
         for tag, df_tag in all_data.items():
             safe_tag = re.sub(r"[\\/*?:\[\]]", "_", tag)[:31]
             df_tag.reset_index(drop=True).to_excel(writer, index=False, sheet_name=safe_tag)
     st.success(f"✅ Results exported successfully: {EXPORT_PATH}")
-
 # ============================================================
 #                      DRIVER CODE
 # ============================================================
@@ -338,8 +351,11 @@ def main():
 
     if page == "Bad Ranking + Detailed Result":
         st.header("📊 Bad Ranking Table")
-        st.dataframe(result_df, use_container_width=True)
-
+        st.dataframe(result_df.style.apply(lambda row: [
+            "background-color: #ccffcc;" if row["Failure Prediction Score (%)"] < 25 else
+            "background-color: #fff5ba;" if row["Failure Prediction Score (%)"] < 75 else
+            "background-color: #ffcccc;"
+        ] * len(row), axis=1), use_container_width=True)
         selected_tag = st.selectbox("Select Valve Tag for Detailed Analysis", result_df["Valve Tag"])
         if selected_tag in all_data:
             df_tag = all_data[selected_tag]
@@ -347,9 +363,9 @@ def main():
             score = df_tag["FailureScore"].iloc[0]
             plot_gauge(score, threshold_95, selected_tag)
             plot_trend(df_tag, selected_tag)
+            plot_value_trend(df_tag, selected_tag)
             plot_heatmap(df_tag, selected_tag)
             show_valve_table(df_tag, selected_tag)
-
         if st.button("💾 Export Results to Excel"):
             export_results(all_data)
 
