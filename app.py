@@ -246,7 +246,7 @@ def plot_heatmap(df_tag, tag):
         labels=dict(x="Date", y="Hour", color="Absolute Error"),
         title=f"Absolute Error Heatmap - {tag}",
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(heatmap_fig, use_container_width=True)
 def plot_abnormalities_per_date(df_tag, tag):
     """
     Plots the number of abnormalities detected per date for a specific valve tag.
@@ -445,4 +445,5 @@ def main():
 # ============================================================
 if __name__ == "__main__":
     main()
+
 
