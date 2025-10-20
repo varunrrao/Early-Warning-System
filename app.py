@@ -13,11 +13,12 @@ from sklearn.ensemble import IsolationForest
 from statsmodels.tsa.arima.model import ARIMA
 from datetime import datetime
 from io import BytesIO
-
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 # ============================================================
 #                      CONFIGURATION
 # ============================================================
-APP_TITLE = "Control Valve Failure Prediction Tool"
+APP_TITLE = "Early Warning System for Control Valve Failure Prediction"
 DATE_COL = "Date"
 COL_FINAL = ".FINAL_VALUE"
 COL_POSITION = ".FINAL_POSITION_VALUE"
@@ -198,11 +199,10 @@ def plot_trend(df_tag, tag):
         title=f"Error Trend with 95th Percentile Threshold - {tag}",
         xaxis_title="Date",
         yaxis_title="Error",
-        template="plotly_white"
+        template="plotly_white",
+        
     )
-
     st.plotly_chart(fig, use_container_width=True)
-
 def plot_value_trend(df_tag, tag):
     """Plots FINAL_VALUE and FINAL_POSITION_VALUE trends against Date."""
 
@@ -234,7 +234,7 @@ def plot_value_trend(df_tag, tag):
     )
     st.plotly_chart(fig, use_container_width=True)
 def plot_gauge(score, threshold, tag): 
-    fig = go.Figure(go.Indicator( mode="gauge+number+delta", value=score, domain={'x': [0, 1], 'y': [0, 1]}, title={'text': f"Failure Prediction - {tag}<br>95th Percentile: {threshold:.2f}"}, gauge={ 'axis': {'range': [0, 100]}, 'bar': {'color': "darkred"}, 'steps': [ {'range': [0, 50], 'color': "#098a20"}, {'range': [50, 75], 'color': "#ffc966"}, {'range': [75, 100], 'color': '#990000'} ], 'threshold': {'line': {'color': "black", 'width': 4}, 'thickness': 0.75, 'value': score} } )) 
+    fig = go.Figure(go.Indicator( mode="gauge+number+delta", value=score, domain={'x': [0, 1], 'y': [0, 1]}, title={'text': f"Failure Prediction - {tag}<br>95th Percentile: {threshold:.2f}"}, gauge={ 'axis': {'range': [0, 100]}, 'bar': {'color': "darkred"}, 'steps': [ {'range': [0, 50], 'color': "#098a20"}, {'range': [50, 75], 'color': "#ffc966"}, {'range': [75, 100], 'color': '#990000'} ], 'threshold': {'line': {'color': "black", 'width': 4}, 'thickness': 0.75, 'value': score} })) 
     st.plotly_chart(fig, use_container_width=True)
 def plot_heatmap(df_tag, tag):
     df_tag["DateOnly"] = df_tag[DATE_COL].dt.date
@@ -246,8 +246,66 @@ def plot_heatmap(df_tag, tag):
         labels=dict(x="Date", y="Hour", color="Absolute Error"),
         title=f"Absolute Error Heatmap - {tag}",
     )
-    st.plotly_chart(heatmap_fig, use_container_width=True)
+def plot_abnormalities_per_date(df_tag, tag):
+    """
+    Plots the number of abnormalities detected per date for a specific valve tag.
+    Abnormalities are determined by rows where 'Anomaly Type' is not 'No Anomaly Detected'.
 
+    Parameters:
+        df_tag (pd.DataFrame): Data for a single valve tag (must include 'Anomaly Type' and 'Date' columns).
+        tag (str): Valve tag name for display in the plot title.
+    """
+
+    st.subheader(f"📊 Number of Abnormalities Per Date — {tag}")
+       # === Constants ===
+    IF_ANOMALY_FLAG = -1        # Isolation Forest anomaly indicator
+    KMEANS_ANOMALY_CLUSTER = 1 
+    # === Ensure 'Date' column exists and is datetime ===
+    if "Date" not in df_tag.columns:
+        st.warning("⚠️ No 'Date' column found in the data.")
+        return
+
+    df_tag = df_tag.copy()
+    df_tag["Date"] = pd.to_datetime(df_tag["Date"], errors='coerce')
+      # === Determine anomaly type ===
+    anomaly_types = []
+    for if_flag, km_flag in zip(df_tag.get("Anomaly", [0]), df_tag.get("Cluster", [0])):
+        if if_flag == IF_ANOMALY_FLAG and km_flag == KMEANS_ANOMALY_CLUSTER:
+            anomaly_types.append("Isolation-Forest+K-Means")
+        elif if_flag == IF_ANOMALY_FLAG:
+            anomaly_types.append("Isolation-Forest")
+        elif km_flag == KMEANS_ANOMALY_CLUSTER:
+            anomaly_types.append("K-Means")
+        else:
+            anomaly_types.append("No Anomaly Detected")
+
+    df_tag["Anomaly Type"] = anomaly_types
+    # === Filter rows with abnormalities ===
+    filtered_abnormalities = df_tag.loc[df_tag["Anomaly Type"] != "No Anomaly Detected", ["Date", "Anomaly Type"]]
+    if filtered_abnormalities.empty:
+        st.info("✅ No abnormalities detected for this tag.")
+        return
+
+    # === Count abnormalities per date ===
+    filtered_abnormalities = filtered_abnormalities.set_index("Date")
+    abnormality_counts = filtered_abnormalities.resample("D").size()
+
+    if abnormality_counts.sum() > 0:
+        # === Plot anomalies counts ===
+        fig, ax = plt.subplots(figsize=(8, 5))
+        abnormality_counts.index = abnormality_counts.index.strftime("%Y-%m-%d")
+        abnormality_counts.plot(kind="bar", color="purple", alpha=0.7, ax=ax)
+        ax.set_xlabel("Date", fontsize=6)
+        ax.set_ylabel("Number of Anomalies", fontsize=6)
+        ax.grid(axis="y", linestyle="--", alpha=0.6)
+        plt.xticks(rotation=45, ha="right")
+        ax.xaxis.set_major_locator(
+            mdates.DayLocator(interval=max(1, len(abnormality_counts) // 20))
+        )
+
+        st.pyplot(fig)
+    else:
+        st.info("✅ No abnormalities recorded for this tag.")
 def show_valve_table(df_tag, tag):
     """
     Displays raw data table (Date, FINAL_VALUE, FINAL_POSITION_VALUE, Error, AbsError, ARIMA Predicted Error)
@@ -313,7 +371,7 @@ def show_valve_table(df_tag, tag):
             "AbsError": "{:.3f}",
             "ARIMA_Predicted": "{:.3f}",
         }),
-        use_container_width=True,
+        width='stretch',
     )
     display_df["Anomaly Type"] = anomaly_types
 
@@ -351,11 +409,17 @@ def main():
 
     if page == "Bad Ranking + Detailed Result":
         st.header("📊 Bad Ranking Table")
-        st.dataframe(result_df.style.apply(lambda row: [
-            "background-color: #ccffcc;" if row["Failure Prediction Score (%)"] < 25 else
-            "background-color: #fff5ba;" if row["Failure Prediction Score (%)"] < 75 else
-            "background-color: #ffcccc;"
-        ] * len(row), axis=1), use_container_width=True)
+        st.dataframe(
+            result_df.style.apply(
+                lambda row: [
+            "font-weight: bold; color: black;" if i == 0 else (
+                "font-weight: bold; color: black; background-color: #99e699;" if row["Failure Prediction Score (%)"] < 25 else
+                "font-weight: bold; color: black; background-color: #ffeb99;" if row["Failure Prediction Score (%)"] < 75 else
+                "font-weight: bold; color: black; background-color: #ff6666;"
+            )
+            for i in range(len(row))
+        ],
+        axis=1), width='stretch')
         selected_tag = st.selectbox("Select Valve Tag for Detailed Analysis", result_df["Valve Tag"])
         if selected_tag in all_data:
             df_tag = all_data[selected_tag]
@@ -366,6 +430,7 @@ def main():
             plot_value_trend(df_tag, selected_tag)
             plot_heatmap(df_tag, selected_tag)
             show_valve_table(df_tag, selected_tag)
+            plot_abnormalities_per_date(df_tag, selected_tag)
         if st.button("💾 Export Results to Excel"):
             export_results(all_data)
 
