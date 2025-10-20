@@ -427,7 +427,7 @@ def main():
             threshold_95 = df_tag["Error"].quantile(0.95)
             score = df_tag["FailureScore"].iloc[0]
             plot_gauge(score, threshold_95, selected_tag)
-            plot_trend(df_tag, selected_tag)
+            #plot_trend(df_tag, selected_tag)
             plot_value_trend(df_tag, selected_tag)
             plot_heatmap(df_tag, selected_tag)
             show_valve_table(df_tag, selected_tag)
@@ -445,5 +445,6 @@ def main():
 # ============================================================
 if __name__ == "__main__":
     main()
+
 
 
