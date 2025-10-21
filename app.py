@@ -165,6 +165,25 @@ def process_valve_data(df: pd.DataFrame):
 # ============================================================
 #                      VISUALIZATION
 # ============================================================
+def bad_ranking_table(df):
+    html = "<table style='border-collapse: collapse; width: 100%; text-align: center;'>"
+    html += "<tr style='background-color:#f2f2f2; font-weight:bold;'>"
+    for c in df.columns:
+        html += f"<th style='border:2px solid black; padding:6px;'>{c}</th>"
+    html += "</tr>"
+    for _, row in df.iterrows():
+        html += "<tr>"
+        for col in df.columns:
+            if col == "Failure Prediction Score (%)":
+                v = row[col]
+                bg = "#12A112" if v < 25 else "#ddbb33" if v < 75 else "#e45a5ae6"
+                html += f"<td style='border:3px solid black; background-color:{bg}; font-weight:bold; color:black; padding:6px;'>{v}</td>"
+            else:
+                html += f"<td style='border:3px solid black; font-weight:bold; color:black; padding:6px;'>{row[col]}</td>"
+        html += "</tr>"
+    html += "</table>"
+    return html
+
 def plot_trend(df_tag, tag):
     """Plots Error trend and highlights the 95th percentile threshold as a dotted line."""
     threshold_95 = df_tag["AbsError"].quantile(0.95)
@@ -246,7 +265,6 @@ def plot_heatmap(df_tag, tag):
         labels=dict(x="Date", y="Hour", color="Absolute Error"),
         title=f"Absolute Error Heatmap - {tag}",
     )
-    st.plotly_chart(heatmap_fig, use_container_width=True)
 def plot_abnormalities_per_date(df_tag, tag):
     """
     Plots the number of abnormalities detected per date for a specific valve tag.
@@ -375,13 +393,14 @@ def show_valve_table(df_tag, tag):
         width='stretch',
     )
     display_df["Anomaly Type"] = anomaly_types
-
-def export_results(all_data):
+def export_results(df):
+    export_df = df[["Valve Tag", "95th '%' Error Threshold","Failure Prediction Score (%)"]]
+    output = BytesIO()
     with pd.ExcelWriter(EXPORT_PATH, engine="openpyxl") as writer:
-        for tag, df_tag in all_data.items():
-            safe_tag = re.sub(r"[\\/*?:\[\]]", "_", tag)[:31]
-            df_tag.reset_index(drop=True).to_excel(writer, index=False, sheet_name=safe_tag)
+          export_df.to_excel(writer, index=False, sheet_name="Results")
+    processed_data = output.getvalue()
     st.success(f"✅ Results exported successfully: {EXPORT_PATH}")
+    return processed_data
 # ============================================================
 #                      DRIVER CODE
 # ============================================================
@@ -410,31 +429,22 @@ def main():
 
     if page == "Bad Ranking + Detailed Result":
         st.header("📊 Bad Ranking Table")
-        st.dataframe(
-            result_df.style.apply(
-                lambda row: [
-            "font-weight: bold; color: black;" if i == 0 else (
-                "font-weight: bold; color: black; background-color: #99e699;" if row["Failure Prediction Score (%)"] < 25 else
-                "font-weight: bold; color: black; background-color: #ffeb99;" if row["Failure Prediction Score (%)"] < 75 else
-                "font-weight: bold; color: black; background-color: #ff6666;"
-            )
-            for i in range(len(row))
-        ],
-        axis=1), width='stretch')
+        bad_ranking_table(result_df)
+        if st.button("💾 Export Results to Excel"):
+            export_results(result_df)
+        st.markdown(bad_ranking_table(result_df), unsafe_allow_html=True)
+        st.header("🔎Detailed Valve Analysis")
         selected_tag = st.selectbox("Select Valve Tag for Detailed Analysis", result_df["Valve Tag"])
         if selected_tag in all_data:
             df_tag = all_data[selected_tag]
             threshold_95 = df_tag["Error"].quantile(0.95)
             score = df_tag["FailureScore"].iloc[0]
             plot_gauge(score, threshold_95, selected_tag)
-            #plot_trend(df_tag, selected_tag)
+            plot_trend(df_tag, selected_tag)
             plot_value_trend(df_tag, selected_tag)
             plot_heatmap(df_tag, selected_tag)
             show_valve_table(df_tag, selected_tag)
             plot_abnormalities_per_date(df_tag, selected_tag)
-        if st.button("💾 Export Results to Excel"):
-            export_results(all_data)
-
     elif page == "Absolute Error Heatmap of all Tags":
         st.header("Individual Heatmaps for All Valve Tags")
         for tag, df_tag in all_data.items():
@@ -445,6 +455,3 @@ def main():
 # ============================================================
 if __name__ == "__main__":
     main()
-
-
-
