@@ -166,23 +166,50 @@ def process_valve_data(df: pd.DataFrame):
 #                      VISUALIZATION
 # ============================================================
 def bad_ranking_table(df):
-    html = "<table style='border-collapse: collapse; width: 100%; text-align: center;'>"
-    html += "<tr style='background-color:#f2f2f2; font-weight:bold;'>"
+    html = """
+    <table style='
+        border-collapse: collapse;
+        width: 100%;
+        text-align: center;
+        border: 2px solid #444;
+        border-radius: 8px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        background-color: #fafafa;
+    '>
+    <tr style='background-color:#e6e6e6; font-weight:bold;'>
+    """
+
+    # === Header row ===
     for c in df.columns:
-        html += f"<th style='border:2px solid black; padding:6px;'>{c}</th>"
+        html += f"<th style='border:2px solid #666; padding:6px; color:black;'>{c}</th>"
     html += "</tr>"
+
+    # === Data rows ===
     for _, row in df.iterrows():
         html += "<tr>"
         for col in df.columns:
             if col == "Failure Prediction Score (%)":
                 v = row[col]
-                bg = "#12A112" if v < 25 else "#ddbb33" if v < 75 else "#e45a5ae6"
-                html += f"<td style='border:3px solid black; background-color:{bg}; font-weight:bold; color:black; padding:6px;'>{v}</td>"
+
+                # Background color logic
+                if v < 25:
+                    bg = "#8fd18f"   # darker green
+                    color = "black"
+                elif v < 75:
+                    bg = "#97790c"   # amber/yellow
+                    color = "black"
+                else:
+                    bg = "#d63031"   # dark red
+                    color = "white"
+
+                html += f"<td style='border:2px solid #666; background-color:{bg}; font-weight:bold; color:{color}; padding:6px;'>{v}</td>"
             else:
-                html += f"<td style='border:3px solid black; font-weight:bold; color:black; padding:6px;'>{row[col]}</td>"
+                html += f"<td style='border:2px solid #666; font-weight:bold; color:black; padding:6px;'>{row[col]}</td>"
         html += "</tr>"
+
     html += "</table>"
     return html
+
 
 def plot_trend(df_tag, tag):
     """Plots Error trend and highlights the 95th percentile threshold as a dotted line."""
@@ -375,7 +402,7 @@ def show_valve_table(df_tag, tag):
         elif row["Anomaly Type"] == "Isolation-Forest":
             return ["background-color: #ff9999;"] * len(row)  # light red
         elif row["Anomaly Type"] == "K-Means":
-            return ["background-color: #fff5ba;"] * len(row)  # pale yellow
+            return ["background-color: #97790c;"] * len(row)  # pale yellow
         else:
             return [""] * len(row)
 
